@@ -38,3 +38,19 @@ sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
   "log-driver": "json-file",
 }
 EOF
+
+
+
+mkdir -p $LS/vllm-cache
+export VLLM_CACHE_ROOT=$LS/vllm-cache
+echo 'export VLLM_CACHE_ROOT=$LS/vllm-cache' >> ~/.bashrc
+
+
+cat >> ~/.bashrc << 'EOF'
+export UV_CACHE_DIR=$LS/uv-cache
+export HF_HOME=$LS/hf-cache
+export VLLM_CACHE_ROOT=$LS/vllm-cache
+export UV_TORCH_BACKEND=cu128
+EOF
+source ~/.bashrc
+mkdir -p $LS/uv-cache $LS/hf-cache $LS/vllm-cache $LS/lmcache-disk-cache

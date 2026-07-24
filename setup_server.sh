@@ -45,19 +45,30 @@ sudo apt install -y --no-install-recommends \
 git lfs install --system || true
 
 # ---------------------------------------------------------------
-log "3/6  NVIDIA driver check"
+log "3/6  NVIDIA driver check (kernel module AND libcuda userspace)"
 # ---------------------------------------------------------------
 NEED_REBOOT=0
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-  echo "Driver already present: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1) — leaving it alone."
+  DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
+  echo "Kernel driver present: $DRV — leaving it alone."
   echo "(Do NOT run ubuntu-drivers autoinstall; it would replace a working driver.)"
+  # nvidia-smi working only proves the kernel module; torch needs libcuda.so.1
+  # from libnvidia-compute-<branch>, which can be missing/broken independently.
+  if ! ldconfig -p | grep -q 'libcuda\.so\.1'; then
+    echo "libcuda.so.1 missing — repairing compute userspace for branch ${DRV%%.*}."
+    sudo apt install --reinstall -y "libnvidia-compute-${DRV%%.*}" \
+      || sudo apt install --reinstall -y "libnvidia-compute-${DRV%%.*}-server"
+    sudo ldconfig
+    ldconfig -p | grep -q 'libcuda\.so\.1' \
+      || { echo "ERROR: libcuda.so.1 still missing after reinstall — investigate before continuing."; exit 1; }
+    echo "libcuda repaired."
+  fi
 else
   echo "No working driver found — installing via ubuntu-drivers."
   sudo apt install -y ubuntu-drivers-common
   sudo ubuntu-drivers autoinstall
   NEED_REBOOT=1
 fi
-
 # ---------------------------------------------------------------
 log "4/6  Docker + NVIDIA container toolkit, data rooted on \$LS"
 # ---------------------------------------------------------------
@@ -116,6 +127,7 @@ sudo docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi >
   || echo "docker GPU passthrough: CHECK (only matters if you run GPU containers)"
 "$LS/miniforge3/bin/conda" --version
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+ldconfig -p | grep -q 'libcuda\.so\.1' && echo "libcuda userspace: OK" || echo "libcuda userspace: MISSING (torch will fail)"
 
 cat <<EOF
 
